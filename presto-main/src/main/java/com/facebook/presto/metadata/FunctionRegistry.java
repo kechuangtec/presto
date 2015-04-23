@@ -553,6 +553,14 @@ public class FunctionRegistry
         if (actualType.equals(BIGINT) && expectedType.equals(DOUBLE)) {
             return true;
         }
+        // add auto type conversion from varchar to bigint
+        if (actualType.equals(VARCHAR) && expectedType.equals(BIGINT)) {
+            return true;
+        }
+        // add auto type conversion from varchar to double
+        if (actualType.equals(VARCHAR) && expectedType.equals(DOUBLE)) {
+            return true;
+        }
         // widen date to timestamp
         if (actualType.equals(DATE) && expectedType.equals(TIMESTAMP)) {
             return true;
@@ -615,6 +623,14 @@ public class FunctionRegistry
 
         if ((firstType.equals(BIGINT) || firstType.equals(DOUBLE)) && (secondType.equals(BIGINT) || secondType.equals(DOUBLE))) {
             return Optional.<Type>of(DOUBLE);
+        }
+        // add auto type conversion from varchar to double
+        if ((firstType.equals(VARCHAR) || firstType.equals(DOUBLE)) && (secondType.equals(VARCHAR) || secondType.equals(DOUBLE))) {
+            return Optional.<Type>of(DOUBLE);
+        }
+        // add auto type conversion from varchar to double
+        if ((firstType.equals(VARCHAR) || firstType.equals(BIGINT)) && (secondType.equals(VARCHAR) || secondType.equals(BIGINT))) {
+            return Optional.<Type>of(BIGINT);
         }
 
         if ((firstType.equals(TIME) || firstType.equals(TIME_WITH_TIME_ZONE)) && (secondType.equals(TIME) || secondType.equals(TIME_WITH_TIME_ZONE))) {

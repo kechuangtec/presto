@@ -224,6 +224,11 @@ public final class HiveUtil
 
     static boolean isSplittable(InputFormat<?, ?> inputFormat, FileSystem fileSystem, Path path)
     {
+        // ORC uses a custom InputFormat but is always splittable
+        if (inputFormat.getClass().getSimpleName().equals("OrcInputFormat")) {
+            return true;
+        }
+
         // use reflection to get isSplittable method on InputFormat
         Method method = null;
         for (Class<?> clazz = inputFormat.getClass(); clazz != null; clazz = clazz.getSuperclass()) {

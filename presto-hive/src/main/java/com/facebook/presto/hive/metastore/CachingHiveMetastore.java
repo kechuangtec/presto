@@ -41,9 +41,12 @@ import org.apache.hadoop.hive.metastore.api.InvalidOperationException;
 import org.apache.hadoop.hive.metastore.api.MetaException;
 import org.apache.hadoop.hive.metastore.api.NoSuchObjectException;
 import org.apache.hadoop.hive.metastore.api.Partition;
+import org.apache.hadoop.hive.metastore.api.StorageDescriptor;
 import org.apache.hadoop.hive.metastore.api.Table;
 import org.apache.hadoop.hive.metastore.api.UnknownDBException;
 import org.apache.thrift.TException;
+import org.apache.thrift.protocol.TBinaryProtocol;
+import org.apache.thrift.transport.TMemoryBuffer;
 import org.weakref.jmx.Flatten;
 import org.weakref.jmx.Managed;
 
@@ -439,6 +442,7 @@ public class CachingHiveMetastore
                         try (HiveMetastoreClient client = clientProvider.createMetastoreClient()) {
                             client.drop_table(databaseName, tableName, true);
                         }
+                        invalidatePartitionCaches(databaseName, tableName);
                         tableCache.invalidate(new HiveTableName(databaseName, tableName));
                         tableNamesCache.invalidate(databaseName);
                         viewNamesCache.invalidate(databaseName);
@@ -825,6 +829,69 @@ public class CachingHiveMetastore
         public int hashCode()
         {
             return Objects.hash(hiveTableName, parts);
+        }
+    }
+
+    @Override
+    public Partition createPartition(String dbName, String tableName, List<String> values, List<String> pCols, Table table, String location)
+    {
+            Partition tpart = new Partition();
+            tpart.setTableName(tableName);
+            tpart.setDbName(dbName);
+            tpart.setValues(values);
+            StorageDescriptor sd = new StorageDescriptor();
+            TMemoryBuffer buffer = new TMemoryBuffer(1024);
+            TBinaryProtocol prot = new TBinaryProtocol(buffer);
+            try {
+                table.getSd().write(prot);
+               sd.read(prot);
+            }
+            catch (TException e) {
+              throw new PrestoException(HIVE_METASTORE_ERROR, e);
+            }
+            tpart.setSd(sd);
+            tpart.getSd().setLocation(location);
+            return tpart;
+    }
+
+    @Override
+    public int addPartitions(List<Partition> partitions, String dbName, String tblName)
+    {
+        HiveMetastoreClient client = clientProvider.createMetastoreClient();
+        int ret;
+        try {
+            ret = client.add_partitions(partitions);
+        }
+        catch (AlreadyExistsException | InvalidObjectException | MetaException e) {
+            throw Throwables.propagate(e);
+        }
+        catch (TException e) {
+            throw new PrestoException(HIVE_METASTORE_ERROR, e);
+        }
+        if (ret == partitions.size()) {
+            invalidatePartitionCaches(dbName, tblName);
+        }
+        return ret;
+    }
+
+    private void invalidatePartitionCaches(String dbName, String tblName)
+    {
+        // invalidate related partitionNamesCache
+        HiveTableName key = HiveTableName.table(dbName, tblName);
+        this.partitionNamesCache.invalidate(key);
+
+        // invalidate related partitionCache
+        for (HivePartitionName pnKey : partitionCache.asMap().keySet()) {
+            if (pnKey.getHiveTableName().equals(key)) {
+                partitionCache.invalidate(pnKey);
+            }
+        }
+
+        // invalidate related partitionFileterCache
+        for (PartitionFilter pfKey : partitionFilterCache.asMap().keySet()) {
+            if (pfKey.getHiveTableName().equals(key)) {
+                partitionFilterCache.invalidate(pfKey);
+            }
         }
     }
 }

@@ -16,6 +16,7 @@ package com.facebook.presto.sql.analyzer;
 import com.facebook.presto.Session;
 import com.facebook.presto.metadata.ColumnHandle;
 import com.facebook.presto.metadata.FunctionInfo;
+import com.facebook.presto.metadata.FunctionRegistry;
 import com.facebook.presto.metadata.Metadata;
 import com.facebook.presto.metadata.MetadataUtil;
 import com.facebook.presto.metadata.QualifiedTableName;
@@ -83,7 +84,6 @@ import com.google.common.collect.Sets;
 
 import java.util.ArrayList;
 import java.util.Collection;
-import java.util.EnumSet;
 import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
@@ -413,10 +413,6 @@ public class TupleAnalyzer
     @Override
     protected TupleDescriptor visitJoin(Join node, AnalysisContext context)
     {
-        if (EnumSet.of(Join.Type.FULL).contains(node.getType())) {
-            throw new SemanticException(NOT_SUPPORTED, node, "Full outer joins are not supported");
-        }
-
         JoinCriteria criteria = node.getCriteria().orElse(null);
         if (criteria instanceof NaturalJoin) {
             throw new SemanticException(NOT_SUPPORTED, node, "Natural join not supported");
@@ -454,6 +450,7 @@ public class TupleAnalyzer
                 checkState(leftExpressionAnalysis.getSubqueryInPredicates().isEmpty(), "INVARIANT");
                 checkState(rightExpressionAnalysis.getSubqueryInPredicates().isEmpty(), "INVARIANT");
 
+                addCoercionForJoinCriteria(node, leftExpression, rightExpression);
                 expressions.add(new ComparisonExpression(EQUAL, leftExpression, rightExpression));
             }
 
@@ -532,6 +529,22 @@ public class TupleAnalyzer
 
         analysis.setOutputDescriptor(node, output);
         return output;
+    }
+
+    private void addCoercionForJoinCriteria(Join node, Expression leftExpression, Expression rightExpression)
+    {
+        Type leftType = analysis.getType(leftExpression);
+        Type rightType = analysis.getType(rightExpression);
+        Optional<Type> superType = FunctionRegistry.getCommonSuperType(leftType, rightType);
+        if (!superType.isPresent()) {
+            throw new SemanticException(TYPE_MISMATCH, node, "Join criteria has incompatible types: %s, %s", leftType.getDisplayName(), rightType.getDisplayName());
+        }
+        if (!leftType.equals(superType.get())) {
+            analysis.addCoercion(leftExpression, superType.get());
+        }
+        if (!rightType.equals(superType.get())) {
+            analysis.addCoercion(rightExpression, superType.get());
+        }
     }
 
     @Override

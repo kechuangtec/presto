@@ -13,6 +13,9 @@
  */
 package com.facebook.presto.sql.tree;
 
+import com.google.common.collect.ImmutableList;
+
+import java.util.List;
 import java.util.Objects;
 
 import static com.google.common.base.MoreObjects.toStringHelper;
@@ -22,12 +25,14 @@ public class CreateTable
         extends Statement
 {
     private final QualifiedName name;
-    private final Query query;
+    private final List<TableElement> elements;
+    private final boolean existsPredicate;
 
-    public CreateTable(QualifiedName name, Query query)
+    public CreateTable(QualifiedName name, List<TableElement> columnDefList, boolean existsPredicate)
     {
-        this.name = checkNotNull(name, "name is null");
-        this.query = checkNotNull(query, "query is null");
+        this.name = checkNotNull(name, "table is null");
+        this.elements = ImmutableList.copyOf(checkNotNull(columnDefList, "columnDefList is null"));
+        this.existsPredicate = existsPredicate;
     }
 
     public QualifiedName getName()
@@ -35,9 +40,14 @@ public class CreateTable
         return name;
     }
 
-    public Query getQuery()
+    public List<TableElement> getElements()
     {
-        return query;
+        return elements;
+    }
+
+    public boolean isExistsPredicate()
+    {
+        return existsPredicate;
     }
 
     @Override
@@ -49,7 +59,7 @@ public class CreateTable
     @Override
     public int hashCode()
     {
-        return Objects.hash(name, query);
+        return Objects.hash(name, elements, existsPredicate);
     }
 
     @Override
@@ -63,15 +73,17 @@ public class CreateTable
         }
         CreateTable o = (CreateTable) obj;
         return Objects.equals(name, o.name)
-                && Objects.equals(query, o.query);
+                && Objects.equals(elements, o.elements)
+                && existsPredicate == o.existsPredicate;
     }
 
     @Override
     public String toString()
     {
         return toStringHelper(this)
-                .add("name", name)
-                .add("query", query)
+                .add("table", name)
+                .add("columnDefList", elements)
+                .add("existsPredicate", existsPredicate)
                 .toString();
     }
 }

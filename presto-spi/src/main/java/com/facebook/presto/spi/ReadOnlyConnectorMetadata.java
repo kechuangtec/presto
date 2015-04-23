@@ -63,7 +63,7 @@ public abstract class ReadOnlyConnectorMetadata
     }
 
     @Override
-    public final ConnectorInsertTableHandle beginInsert(ConnectorSession session, ConnectorTableHandle tableHandle)
+    public final ConnectorInsertTableHandle beginInsert(ConnectorSession session, ConnectorTableHandle tableHandle, InsertOption insertOption)
     {
         throw new PrestoException(NOT_SUPPORTED, "This connector does not support inserts");
     }

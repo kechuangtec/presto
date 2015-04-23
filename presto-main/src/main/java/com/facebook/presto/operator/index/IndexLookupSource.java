@@ -75,6 +75,18 @@ public class IndexLookupSource
     }
 
     @Override
+    public int getNextUnvisitedKeyId(int currentKeyId)
+    {
+        throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public long getJoinPositionForKeyId(int currentKeyId)
+    {
+        throw new UnsupportedOperationException();
+    }
+
+    @Override
     public void appendTo(long position, PageBuilder pageBuilder, int outputChannelOffset)
     {
         indexedData.appendTo(position, pageBuilder, outputChannelOffset);

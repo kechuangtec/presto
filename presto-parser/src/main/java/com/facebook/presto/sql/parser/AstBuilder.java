@@ -25,6 +25,7 @@ import com.facebook.presto.sql.tree.Cast;
 import com.facebook.presto.sql.tree.CoalesceExpression;
 import com.facebook.presto.sql.tree.ComparisonExpression;
 import com.facebook.presto.sql.tree.CreateTable;
+import com.facebook.presto.sql.tree.CreateTableAsSelect;
 import com.facebook.presto.sql.tree.CreateView;
 import com.facebook.presto.sql.tree.CurrentTime;
 import com.facebook.presto.sql.tree.DoubleLiteral;
@@ -61,6 +62,7 @@ import com.facebook.presto.sql.tree.Node;
 import com.facebook.presto.sql.tree.NotExpression;
 import com.facebook.presto.sql.tree.NullIfExpression;
 import com.facebook.presto.sql.tree.NullLiteral;
+import com.facebook.presto.sql.tree.PartitionElement;
 import com.facebook.presto.sql.tree.QualifiedName;
 import com.facebook.presto.sql.tree.QualifiedNameReference;
 import com.facebook.presto.sql.tree.Query;
@@ -90,6 +92,7 @@ import com.facebook.presto.sql.tree.StringLiteral;
 import com.facebook.presto.sql.tree.SubqueryExpression;
 import com.facebook.presto.sql.tree.SubscriptExpression;
 import com.facebook.presto.sql.tree.Table;
+import com.facebook.presto.sql.tree.TableElement;
 import com.facebook.presto.sql.tree.TableSubquery;
 import com.facebook.presto.sql.tree.TimeLiteral;
 import com.facebook.presto.sql.tree.TimestampLiteral;
@@ -140,27 +143,57 @@ class AstBuilder
     }
 
     @Override
+    public Node visitCreateTable(@NotNull SqlBaseParser.CreateTableContext context)
+    {
+        List<TableElement> tableDefList = visit(context.columnDef(), TableElement.class);
+        if (context.partitionIterm() != null) {
+            List<TableElement> partitionDefList = visit(context.partitionIterm().columnDef(), TableElement.class);
+            for (TableElement e : partitionDefList) {
+                tableDefList.add(new TableElement(e.getName(), e.getType(), e.getComment(), true));
+            }
+        }
+        return new CreateTable(getQualifiedName(context.qualifiedName()), tableDefList, context.EXISTS() != null);
+    }
+
+    @Override
     public Node visitCreateTableAsSelect(@NotNull SqlBaseParser.CreateTableAsSelectContext context)
     {
-        return new CreateTable(getQualifiedName(context.qualifiedName()), (Query) visit(context.query()));
+        List<String> columns = context.IDENTIFIER().stream()
+                .map(ParseTree::getText)
+                .collect(Collectors.toList());
+        return new CreateTableAsSelect(getQualifiedName(context.qualifiedName()), (Query) visit(context.query()), context.PARTITION() != null, columns);
     }
 
     @Override
     public Node visitDropTable(@NotNull SqlBaseParser.DropTableContext context)
     {
-        return new DropTable(getQualifiedName(context.qualifiedName()));
+        return new DropTable(getQualifiedName(context.qualifiedName()), context.EXISTS() != null);
     }
 
     @Override
     public Node visitDropView(@NotNull SqlBaseParser.DropViewContext context)
     {
-        return new DropView(getQualifiedName(context.qualifiedName()));
+        return new DropView(getQualifiedName(context.qualifiedName()), context.EXISTS() != null);
     }
 
     @Override
-    public Node visitInsertInto(@NotNull SqlBaseParser.InsertIntoContext context)
+    public Node visitInsert(@NotNull SqlBaseParser.InsertContext context)
     {
-        return new Insert(getQualifiedName(context.qualifiedName()), (Query) visit(context.query()));
+        return new Insert(getQualifiedName(context.qualifiedName()),
+                (Query) visit(context.query()),
+                context.OVERWRITE() != null,
+                context.PARTITION() != null,
+                visit(context.partitionDef(), PartitionElement.class));
+    }
+
+    @Override
+    public Node visitPartitionElement(@NotNull SqlBaseParser.PartitionElementContext context)
+    {
+        Optional<Expression> value = Optional.empty();
+        if (context.EQ() != null) {
+            value = Optional.of((Expression) visit(context.valueExpression()));
+        }
+        return new PartitionElement(context.identifier().getText(), value);
     }
 
     @Override
@@ -866,6 +899,16 @@ class AstBuilder
                 visit(context.partition, Expression.class),
                 visit(context.sortItem(), SortItem.class),
                 visitIfPresent(context.windowFrame(), WindowFrame.class));
+    }
+
+    @Override
+    public Node visitTableElement(@NotNull SqlBaseParser.TableElementContext context)
+    {
+        Optional<String> comment = Optional.empty();
+        if (context.COMMENT() != null) {
+            comment = Optional.of(unquote(context.STRING().getText()));
+        }
+        return new TableElement(context.identifier().getText(), getType(context.type()), comment, false);
     }
 
     @Override

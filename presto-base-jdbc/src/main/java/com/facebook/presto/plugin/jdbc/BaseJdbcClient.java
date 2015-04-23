@@ -13,6 +13,12 @@
  */
 package com.facebook.presto.plugin.jdbc;
 
+import com.facebook.presto.plugin.jdbc.cache.JdbcCacheConfig;
+import com.facebook.presto.plugin.jdbc.cache.JdbcCacheSplit;
+import com.facebook.presto.plugin.jdbc.cache.JdbcJavaBean;
+import com.facebook.presto.plugin.jdbc.cache.JdbcResultCache;
+import com.facebook.presto.plugin.jdbc.subtable.JdbcSubTableConfig;
+import com.facebook.presto.plugin.jdbc.subtable.JdbcSubTableManager;
 import com.facebook.presto.spi.ColumnMetadata;
 import com.facebook.presto.spi.ConnectorColumnHandle;
 import com.facebook.presto.spi.ConnectorPartition;
@@ -20,6 +26,7 @@ import com.facebook.presto.spi.ConnectorPartitionResult;
 import com.facebook.presto.spi.ConnectorSplitSource;
 import com.facebook.presto.spi.ConnectorTableMetadata;
 import com.facebook.presto.spi.FixedSplitSource;
+import com.facebook.presto.spi.HostAddress;
 import com.facebook.presto.spi.PrestoException;
 import com.facebook.presto.spi.SchemaTableName;
 import com.facebook.presto.spi.TableNotFoundException;
@@ -30,6 +37,7 @@ import com.google.common.base.Throwables;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
+
 import io.airlift.log.Logger;
 import io.airlift.slice.Slice;
 
@@ -94,7 +102,18 @@ public class BaseJdbcClient
     protected final Properties connectionProperties;
     protected final String identifierQuote;
 
-    public BaseJdbcClient(JdbcConnectorId connectorId, BaseJdbcConfig config, String identifierQuote, Driver driver)
+    protected final boolean jdbcSubTableEnable;
+    private JdbcSubTableManager subTableManager;
+
+    protected final boolean cacheEnable;
+    private JdbcResultCache jdbcResultCache;
+
+    public BaseJdbcClient(JdbcConnectorId connectorId,
+            BaseJdbcConfig config,
+            String identifierQuote,
+            Driver driver,
+            JdbcSubTableConfig subTableConfig,
+            JdbcCacheConfig cacheConfig)
     {
         this.connectorId = checkNotNull(connectorId, "connectorId is null").toString();
         this.identifierQuote = checkNotNull(identifierQuote, "identifierQuote is null");
@@ -109,6 +128,17 @@ public class BaseJdbcClient
         }
         if (config.getConnectionPassword() != null) {
             connectionProperties.setProperty("password", config.getConnectionPassword());
+        }
+
+        // sub table
+        jdbcSubTableEnable = subTableConfig.getJdbcSubTableEnable();
+        if (jdbcSubTableEnable) {
+            this.subTableManager = new JdbcSubTableManager(this.connectorId, identifierQuote, driver, connectionUrl, connectionProperties, subTableConfig);
+        }
+        // jdbc cache
+        cacheEnable = cacheConfig.getJdbcCacheEnable();
+        if (cacheEnable) {
+            this.jdbcResultCache = new JdbcResultCache(identifierQuote, driver, connectionProperties, cacheConfig);
         }
     }
 
@@ -234,7 +264,11 @@ public class BaseJdbcClient
     @Override
     public ConnectorSplitSource getPartitionSplits(JdbcPartition jdbcPartition)
     {
+        if (jdbcSubTableEnable) {
+            return subTableManager.getTableSplits(jdbcPartition);
+        }
         JdbcTableHandle jdbcTableHandle = jdbcPartition.getJdbcTableHandle();
+        List<HostAddress> of = ImmutableList.of();
         JdbcSplit jdbcSplit = new JdbcSplit(
                 connectorId,
                 jdbcTableHandle.getCatalogName(),
@@ -242,7 +276,8 @@ public class BaseJdbcClient
                 jdbcTableHandle.getTableName(),
                 connectionUrl,
                 fromProperties(connectionProperties),
-                jdbcPartition.getTupleDomain());
+                jdbcPartition.getTupleDomain(),
+                "", of, true, "", "", "", "", System.nanoTime(), 1, false);
         return new FixedSplitSource(connectorId, ImmutableList.of(jdbcSplit));
     }
 
@@ -372,7 +407,7 @@ public class BaseJdbcClient
     protected ResultSet getTables(Connection connection, String schemaName, String tableName)
             throws SQLException
     {
-        return connection.getMetaData().getTables(connection.getCatalog(), schemaName, tableName, new String[] {"TABLE"});
+        return connection.getMetaData().getTables(connection.getCatalog(), schemaName, tableName, new String[] {"TABLE", "VIEW"});
     }
 
     protected SchemaTableName getSchemaTableName(ResultSet resultSet)
@@ -466,5 +501,20 @@ public class BaseJdbcClient
             properties.setProperty(entry.getKey(), entry.getValue());
         }
         return properties;
+    }
+
+    public synchronized List<JdbcJavaBean> getTableDataSet(JdbcCacheSplit key)
+    {
+        return jdbcResultCache.getResult(key);
+    }
+
+    public boolean isCacheTable(String tableName)
+    {
+        return cacheEnable && jdbcResultCache != null && jdbcResultCache.isCacheTable(tableName);
+    }
+
+    public void commitPdboLogs(JdbcSplit split, long rowCount)
+    {
+        this.subTableManager.commitPdboLogs(split, rowCount);
     }
 }

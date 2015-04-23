@@ -16,6 +16,8 @@ package com.facebook.presto.plugin.mysql;
 import com.facebook.presto.plugin.jdbc.BaseJdbcClient;
 import com.facebook.presto.plugin.jdbc.BaseJdbcConfig;
 import com.facebook.presto.plugin.jdbc.JdbcConnectorId;
+import com.facebook.presto.plugin.jdbc.cache.JdbcCacheConfig;
+import com.facebook.presto.plugin.jdbc.subtable.JdbcSubTableConfig;
 import com.facebook.presto.spi.SchemaTableName;
 import com.facebook.presto.spi.type.Type;
 import com.google.common.base.Throwables;
@@ -35,10 +37,11 @@ public class MySqlClient
         extends BaseJdbcClient
 {
     @Inject
-    public MySqlClient(JdbcConnectorId connectorId, BaseJdbcConfig config)
+    public MySqlClient(JdbcConnectorId connectorId, BaseJdbcConfig config,
+            JdbcSubTableConfig subTableConfig, JdbcCacheConfig cacheConfig)
             throws SQLException
     {
-        super(connectorId, config, "`", new Driver());
+        super(connectorId, config, "`", new Driver(), subTableConfig, cacheConfig);
         connectionProperties.setProperty("nullCatalogMeansCurrent", "false");
     }
 

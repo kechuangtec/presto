@@ -14,6 +14,7 @@
 package com.facebook.presto.metadata;
 
 import com.facebook.presto.connector.ConnectorManager;
+import com.facebook.presto.server.PrestoServer;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.io.Files;
@@ -23,6 +24,13 @@ import javax.inject.Inject;
 
 import java.io.File;
 import java.io.FileInputStream;
+import java.nio.file.FileSystems;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.nio.file.StandardWatchEventKinds;
+import java.nio.file.WatchEvent;
+import java.nio.file.WatchKey;
+import java.nio.file.WatchService;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -72,6 +80,17 @@ public class CatalogManager
         }
 
         catalogsLoaded.set(true);
+
+        // add catalogs automatically
+        new Thread(() -> {
+            try {
+                log.info("-- Catalog watcher thread start --");
+                startCatalogWatcher(catalogConfigurationDir);
+            }
+            catch (Exception e) {
+                e.printStackTrace();
+            }
+        }).start();
     }
 
     private void loadCatalog(File file)
@@ -110,5 +129,34 @@ public class CatalogManager
             properties.load(in);
         }
         return fromProperties(properties);
+    }
+
+    private void startCatalogWatcher(File catalogConfigurationDir) throws Exception
+    {
+        WatchService watchService = FileSystems.getDefault().newWatchService();
+        Paths.get(catalogConfigurationDir.getAbsolutePath()).register(
+                watchService, StandardWatchEventKinds.ENTRY_CREATE,
+                StandardWatchEventKinds.ENTRY_DELETE);
+        while (true) {
+            WatchKey key = watchService.take();
+            for (WatchEvent<?> event : key.pollEvents()) {
+                if (event.kind() == StandardWatchEventKinds.ENTRY_CREATE) {
+                    log.info("New file in catalog directory : " + event.context());
+                    Path newCatalog = (Path) event.context();
+                    File file = new File(catalogConfigurationDir, newCatalog.getFileName().toString());
+                    if (file.isFile() && file.getName().endsWith(".properties")) {
+                        loadCatalog(file);
+                        PrestoServer.updateDatasourcesAnnouncement(Files.getNameWithoutExtension(newCatalog.getFileName().toString()));
+                    }
+                }
+                else if (event.kind() == StandardWatchEventKinds.ENTRY_DELETE) {
+                    log.info("Delete file from catalog directory : " + event.context());
+                }
+            }
+            boolean valid = key.reset();
+            if (!valid) {
+                break;
+            }
+        }
     }
 }

@@ -57,6 +57,7 @@ import static com.facebook.presto.sql.ExpressionUtils.expressionOrNullSymbols;
 import static com.facebook.presto.sql.ExpressionUtils.extractConjuncts;
 import static com.facebook.presto.sql.ExpressionUtils.stripNonDeterministicConjuncts;
 import static com.facebook.presto.sql.planner.EqualityInference.createEqualityInference;
+import static com.google.common.base.Functions.compose;
 import static com.google.common.base.Predicates.in;
 import static com.google.common.base.Predicates.not;
 import static com.google.common.collect.Iterables.transform;
@@ -275,6 +276,13 @@ public class EffectivePredicateExtractor
                         .add(rightPredicate)
                         .addAll(transform(extractConjuncts(leftPredicate), expressionOrNullSymbols(in(node.getLeft().getOutputSymbols()))))
                         .addAll(transform(joinConjuncts, expressionOrNullSymbols(in(node.getLeft().getOutputSymbols()))))
+                        .build());
+            case FULL:
+                return combineConjuncts(ImmutableList.<Expression>builder()
+                        .addAll(transform(extractConjuncts(leftPredicate), expressionOrNullSymbols(in(node.getLeft().getOutputSymbols()))))
+                        .addAll(transform(extractConjuncts(rightPredicate), expressionOrNullSymbols(in(node.getRight().getOutputSymbols()))))
+                        .addAll(transform(joinConjuncts,
+                                compose(expressionOrNullSymbols(in(node.getLeft().getOutputSymbols())), expressionOrNullSymbols(in(node.getRight().getOutputSymbols())))))
                         .build());
             default:
                 throw new UnsupportedOperationException("Unknown join type: " + node.getType());

@@ -29,6 +29,7 @@ import java.util.List;
 import static com.facebook.presto.operator.SyntheticAddress.decodePosition;
 import static com.facebook.presto.operator.SyntheticAddress.decodeSliceIndex;
 import static com.google.common.base.Preconditions.checkNotNull;
+import static io.airlift.slice.SizeOf.sizeOfBooleanArray;
 import static io.airlift.slice.SizeOf.sizeOfIntArray;
 
 // This implementation assumes arrays used in the hash are always a power of 2
@@ -41,6 +42,7 @@ public final class InMemoryJoinHash
     private final int channelCount;
     private final int mask;
     private final int[] key;
+    private final boolean[] keyVisited;
     private final int[] positionLinks;
     private final List<Type> hashTypes;
 
@@ -55,10 +57,12 @@ public final class InMemoryJoinHash
 
         // reserve memory for the arrays
         int hashSize = HashCommon.arraySize(addresses.size(), 0.75f);
-        operatorContext.reserveMemory(sizeOfIntArray(hashSize) + sizeOfIntArray(addresses.size()));
+        operatorContext.reserveMemory(sizeOfIntArray(hashSize) + sizeOfBooleanArray(hashSize) + sizeOfIntArray(addresses.size()));
 
         mask = hashSize - 1;
         key = new int[hashSize];
+        // TODO: Question? Should I make this memory consumption opt-in? (only if we'll need it)
+        keyVisited = new boolean[hashSize];
         Arrays.fill(key, -1);
 
         this.positionLinks = new int[addresses.size()];
@@ -106,6 +110,7 @@ public final class InMemoryJoinHash
 
         while (key[pos] != -1) {
             if (positionEqualsCurrentRow(key[pos], position, page.getBlocks())) {
+                keyVisited[pos] = true;
                 return key[pos];
             }
             // increment position and mask to handler wrap around
@@ -118,6 +123,22 @@ public final class InMemoryJoinHash
     public final long getNextJoinPosition(long currentPosition)
     {
         return positionLinks[Ints.checkedCast(currentPosition)];
+    }
+
+    @Override
+    public int getNextUnvisitedKeyId(int currentKeyId)
+    {
+        for (int i = Ints.checkedCast(currentKeyId + 1); i < keyVisited.length; i++) {
+            if (key[i] != -1 && !keyVisited[i]) {
+                return i;
+            }
+        }
+        return NO_MORE_BUILD_SIDE_OUTER_JOIN_POSITIONS;
+    }
+
+    public long getJoinPositionForKeyId(int currentKeyId)
+    {
+        return key[currentKeyId];
     }
 
     @Override

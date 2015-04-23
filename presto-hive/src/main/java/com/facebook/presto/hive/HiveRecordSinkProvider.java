@@ -24,8 +24,6 @@ import javax.inject.Inject;
 
 import static com.facebook.presto.hive.util.Types.checkType;
 import static com.google.common.base.Preconditions.checkNotNull;
-import static java.util.UUID.randomUUID;
-
 public class HiveRecordSinkProvider
         implements ConnectorRecordSinkProvider
 {
@@ -41,8 +39,7 @@ public class HiveRecordSinkProvider
     public RecordSink getRecordSink(ConnectorOutputTableHandle tableHandle)
     {
         HiveOutputTableHandle handle = checkType(tableHandle, HiveOutputTableHandle.class, "tableHandle");
-
-        Path target = new Path(handle.getTemporaryPath(), randomUUID().toString());
+        Path target = new Path(handle.getTemporaryPath());
         JobConf conf = new JobConf(hdfsEnvironment.getConfiguration(target));
 
         return new HiveRecordSink(handle, target, conf);
@@ -51,6 +48,10 @@ public class HiveRecordSinkProvider
     @Override
     public RecordSink getRecordSink(ConnectorInsertTableHandle tableHandle)
     {
-        throw new UnsupportedOperationException();
+        HiveInsertTableHandle handle = checkType(tableHandle, HiveInsertTableHandle.class, "tableHandle");
+        Path target = new Path(handle.getTemporaryPath());
+        JobConf conf = new JobConf(hdfsEnvironment.getConfiguration(target));
+
+        return new HiveRecordSink(handle, target, conf);
     }
 }

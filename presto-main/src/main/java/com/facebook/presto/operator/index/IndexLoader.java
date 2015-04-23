@@ -384,6 +384,18 @@ public class IndexLoader
         }
 
         @Override
+        public int getNextUnvisitedKeyId(int currentKeyId)
+        {
+            return (int) IndexSnapshot.UNLOADED_INDEX_KEY;
+        }
+
+        @Override
+        public long getJoinPositionForKeyId(int currentKeyId)
+        {
+            return (int) IndexSnapshot.UNLOADED_INDEX_KEY;
+        }
+
+        @Override
         public void appendTo(long position, PageBuilder pageBuilder, int outputChannelOffset)
         {
             throw new UnsupportedOperationException();

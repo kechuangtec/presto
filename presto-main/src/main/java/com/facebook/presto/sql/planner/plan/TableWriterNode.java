@@ -17,6 +17,7 @@ import com.facebook.presto.metadata.InsertTableHandle;
 import com.facebook.presto.metadata.OutputTableHandle;
 import com.facebook.presto.metadata.TableHandle;
 import com.facebook.presto.metadata.TableMetadata;
+import com.facebook.presto.spi.InsertOption;
 import com.facebook.presto.sql.planner.Symbol;
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonProperty;
@@ -29,6 +30,7 @@ import javax.annotation.concurrent.Immutable;
 import java.util.List;
 import java.util.Optional;
 
+import static com.google.common.base.MoreObjects.toStringHelper;
 import static com.google.common.base.Preconditions.checkArgument;
 import static com.google.common.base.Preconditions.checkNotNull;
 
@@ -187,10 +189,12 @@ public class TableWriterNode
             extends WriterTarget
     {
         private final TableHandle handle;
+        private final InsertOption insertOption;
 
-        public InsertReference(TableHandle handle)
+        public InsertReference(TableHandle handle, InsertOption insertOption)
         {
             this.handle = checkNotNull(handle, "handle is null");
+            this.insertOption = checkNotNull(insertOption, "insertOption is null");
         }
 
         public TableHandle getHandle()
@@ -198,10 +202,18 @@ public class TableWriterNode
             return handle;
         }
 
+        public InsertOption getInsertOption()
+        {
+            return insertOption;
+        }
+
         @Override
         public String toString()
         {
-            return handle.toString();
+            return toStringHelper(this)
+                    .add("handle", handle.toString())
+                    .add("insertOption", insertOption)
+                    .toString();
         }
     }
 

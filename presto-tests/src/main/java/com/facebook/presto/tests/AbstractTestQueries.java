@@ -1132,6 +1132,16 @@ public abstract class AbstractTestQueries
     }
 
     @Test
+    public void testJoinUsingCoercion()
+            throws Exception
+    {
+        assertQuery(
+                "SELECT * FROM (VALUES (1.0, 2.0)) x (a, b) JOIN (VALUES (1, 3)) y (a, b) USING(a)",
+                "VALUES (1.0, 2.0, 1, 3)"
+        );
+    }
+
+    @Test
     public void testJoinWithReversedComparison()
             throws Exception
     {
@@ -1301,6 +1311,96 @@ public abstract class AbstractTestQueries
                 "JOIN (SELECT * FROM orders WHERE orderkey % 16 = 0 AND custkey % 2 = 0) orders\n" +
                 "ON lineitem.orderkey % 8 = orders.orderkey % 8 AND lineitem.linenumber % 2 = 0\n" +
                 "WHERE orders.custkey % 8 < 7 AND orders.custkey % 8 = lineitem.orderkey % 8 AND lineitem.suppkey % 7 > orders.custkey % 7");
+    }
+
+    @Test
+    public void testSimpleFullJoin()
+            throws Exception
+    {
+        assertQuery("SELECT a, b FROM (VALUES (1), (2)) t(a) FULL OUTER JOIN (VALUES (1), (3)) u(b) ON a = b",
+                "SELECT * FROM (VALUES (1, 1), (2, NULL), (NULL, 3))");
+        assertQuery("SELECT COUNT(*) FROM lineitem FULL JOIN orders ON lineitem.orderkey = orders.orderkey",
+                "SELECT COUNT(*) FROM (" +
+                    "SELECT lineitem.orderkey, orders.orderkey AS o2 FROM lineitem LEFT OUTER JOIN orders ON lineitem.orderkey = orders.orderkey " +
+                    "UNION ALL " +
+                    "SELECT lineitem.orderkey, orders.orderkey AS o2 FROM lineitem RIGHT OUTER JOIN orders ON lineitem.orderkey = orders.orderkey " +
+                    "WHERE lineitem.orderkey IS NULL" +
+                ")");
+        assertQuery("SELECT COUNT(*) FROM lineitem FULL OUTER JOIN orders ON lineitem.orderkey = orders.orderkey",
+                "SELECT COUNT(*) FROM (" +
+                    "SELECT lineitem.orderkey, orders.orderkey AS o2 FROM lineitem LEFT OUTER JOIN orders ON lineitem.orderkey = orders.orderkey " +
+                    "UNION ALL " +
+                    "SELECT lineitem.orderkey, orders.orderkey AS o2 FROM lineitem RIGHT OUTER JOIN orders ON lineitem.orderkey = orders.orderkey " +
+                    "WHERE lineitem.orderkey IS NULL" +
+                ")");
+    }
+
+    @Test
+    public void testFullJoinNormalizedToLeft()
+            throws Exception
+    {
+        assertQuery("SELECT COUNT(*) FROM lineitem FULL JOIN orders ON lineitem.orderkey = orders.orderkey WHERE lineitem.orderkey IS NOT NULL",
+                "SELECT COUNT(*) FROM lineitem LEFT OUTER JOIN orders ON lineitem.orderkey = orders.orderkey WHERE lineitem.orderkey IS NOT NULL");
+    }
+
+    @Test
+    public void testFullJoinNormalizedToRight()
+            throws Exception
+    {
+        assertQuery("SELECT COUNT(*) FROM lineitem FULL JOIN orders ON lineitem.orderkey = orders.orderkey WHERE orders.orderkey IS NOT NULL",
+                "SELECT COUNT(*) FROM lineitem RIGHT OUTER JOIN orders ON lineitem.orderkey = orders.orderkey  WHERE orders.orderkey IS NOT NULL");
+    }
+
+    @Test
+    public void testFullJoinWithRightConstantEquality()
+            throws Exception
+    {
+        assertQuery("SELECT COUNT(*) FROM (SELECT * FROM lineitem WHERE orderkey % 1024 = 0) lineitem FULL JOIN orders ON lineitem.orderkey = 1024",
+                "SELECT COUNT(*) FROM (" +
+                        "SELECT lineitem.orderkey, orders.orderkey AS o2 FROM (SELECT * FROM lineitem WHERE orderkey % 1024 = 0) lineitem LEFT OUTER JOIN orders ON lineitem.orderkey = 1024 " +
+                        "UNION ALL " +
+                        "SELECT lineitem.orderkey, orders.orderkey AS o2 FROM (SELECT * FROM lineitem WHERE orderkey % 1024 = 0) lineitem RIGHT OUTER JOIN orders ON lineitem.orderkey = 1024 " +
+                        "WHERE lineitem.orderkey IS NULL" +
+                        ")");
+    }
+
+    @Test
+    public void testFullJoinWithLeftConstantEquality()
+            throws Exception
+    {
+        assertQuery("SELECT COUNT(*) FROM (SELECT * FROM lineitem WHERE orderkey % 1024 = 0) lineitem FULL JOIN orders ON orders.orderkey = 1024",
+                "SELECT COUNT(*) FROM (" +
+                        "SELECT lineitem.orderkey, orders.orderkey AS o2 FROM (SELECT * FROM lineitem WHERE orderkey % 1024 = 0) lineitem LEFT OUTER JOIN orders ON orders.orderkey = 1024 " +
+                        "UNION ALL " +
+                        "SELECT lineitem.orderkey, orders.orderkey AS o2 FROM (SELECT * FROM lineitem WHERE orderkey % 1024 = 0) lineitem RIGHT OUTER JOIN orders ON orders.orderkey = 1024 " +
+                        "WHERE lineitem.orderkey IS NULL" +
+                        ")");
+    }
+
+    @Test
+    public void testSimpleFullJoinWithLeftConstantEquality()
+            throws Exception
+    {
+        assertQuery("SELECT COUNT(*) FROM lineitem FULL JOIN orders ON lineitem.orderkey = orders.orderkey AND orders.orderkey = 2",
+                "SELECT COUNT(*) FROM (" +
+                        "SELECT lineitem.orderkey, orders.orderkey AS o2 FROM lineitem LEFT OUTER JOIN orders ON lineitem.orderkey = orders.orderkey AND orders.orderkey = 2" +
+                        "UNION ALL " +
+                        "SELECT lineitem.orderkey, orders.orderkey AS o2 FROM lineitem RIGHT OUTER JOIN orders ON lineitem.orderkey = orders.orderkey AND orders.orderkey = 2" +
+                        "WHERE lineitem.orderkey IS NULL" +
+                        ")");
+    }
+
+    @Test
+    public void testSimpleFullJoinWithRightConstantEquality()
+            throws Exception
+    {
+        assertQuery("SELECT COUNT(*) FROM lineitem FULL JOIN orders ON lineitem.orderkey = orders.orderkey AND lineitem.orderkey = 2",
+                "SELECT COUNT(*) FROM (" +
+                        "SELECT lineitem.orderkey, orders.orderkey AS o2 FROM lineitem LEFT OUTER JOIN orders ON lineitem.orderkey = orders.orderkey AND lineitem.orderkey = 2" +
+                        "UNION ALL " +
+                        "SELECT lineitem.orderkey, orders.orderkey AS o2 FROM lineitem RIGHT OUTER JOIN orders ON lineitem.orderkey = orders.orderkey AND lineitem.orderkey = 2" +
+                        "WHERE lineitem.orderkey IS NULL" +
+                        ")");
     }
 
     @Test

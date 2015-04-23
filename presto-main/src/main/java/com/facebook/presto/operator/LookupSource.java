@@ -29,6 +29,12 @@ public interface LookupSource
 
     long getNextJoinPosition(long currentPosition);
 
+    public static final int NO_MORE_BUILD_SIDE_OUTER_JOIN_POSITIONS = -2;
+
+    int getNextUnvisitedKeyId(int currentKeyId);
+
+    public long getJoinPositionForKeyId(int currentKeyId);
+
     void appendTo(long position, PageBuilder pageBuilder, int outputChannelOffset);
 
     @Override

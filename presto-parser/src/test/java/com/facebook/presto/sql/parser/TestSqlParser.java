@@ -20,7 +20,7 @@ import com.facebook.presto.sql.tree.ArrayConstructor;
 import com.facebook.presto.sql.tree.BetweenPredicate;
 import com.facebook.presto.sql.tree.Cast;
 import com.facebook.presto.sql.tree.ComparisonExpression;
-import com.facebook.presto.sql.tree.CreateTable;
+import com.facebook.presto.sql.tree.CreateTableAsSelect;
 import com.facebook.presto.sql.tree.CreateView;
 import com.facebook.presto.sql.tree.CurrentTime;
 import com.facebook.presto.sql.tree.DoubleLiteral;
@@ -656,26 +656,34 @@ public class TestSqlParser
             throws Exception
     {
         assertStatement("CREATE TABLE foo AS SELECT * FROM t",
-                new CreateTable(QualifiedName.of("foo"),
-                        simpleQuery(selectList(new AllColumns()), table(QualifiedName.of("t")))));
+                new CreateTableAsSelect(QualifiedName.of("foo"),
+                        simpleQuery(selectList(new AllColumns()), table(QualifiedName.of("t"))), false, null));
     }
 
     @Test
     public void testDropTable()
             throws Exception
     {
-        assertStatement("DROP TABLE a", new DropTable(QualifiedName.of("a")));
-        assertStatement("DROP TABLE a.b", new DropTable(QualifiedName.of("a", "b")));
-        assertStatement("DROP TABLE a.b.c", new DropTable(QualifiedName.of("a", "b", "c")));
+        assertStatement("DROP TABLE a", new DropTable(QualifiedName.of("a"), false));
+        assertStatement("DROP TABLE a.b", new DropTable(QualifiedName.of("a", "b"), false));
+        assertStatement("DROP TABLE a.b.c", new DropTable(QualifiedName.of("a", "b", "c"), false));
+
+        assertStatement("DROP TABLE IF EXISTS a", new DropTable(QualifiedName.of("a"), true));
+        assertStatement("DROP TABLE IF EXISTS a.b", new DropTable(QualifiedName.of("a", "b"), true));
+        assertStatement("DROP TABLE IF EXISTS a.b.c", new DropTable(QualifiedName.of("a", "b", "c"), true));
     }
 
     @Test
     public void testDropView()
             throws Exception
     {
-        assertStatement("DROP VIEW a", new DropView(QualifiedName.of("a")));
-        assertStatement("DROP VIEW a.b", new DropView(QualifiedName.of("a", "b")));
-        assertStatement("DROP VIEW a.b.c", new DropView(QualifiedName.of("a", "b", "c")));
+        assertStatement("DROP VIEW a", new DropView(QualifiedName.of("a"), false));
+        assertStatement("DROP VIEW a.b", new DropView(QualifiedName.of("a", "b"), false));
+        assertStatement("DROP VIEW a.b.c", new DropView(QualifiedName.of("a", "b", "c"), false));
+
+        assertStatement("DROP VIEW IF EXISTS a", new DropView(QualifiedName.of("a"), true));
+        assertStatement("DROP VIEW IF EXISTS a.b", new DropView(QualifiedName.of("a", "b"), true));
+        assertStatement("DROP VIEW IF EXISTS a.b.c", new DropView(QualifiedName.of("a", "b", "c"), true));
     }
 
     @Test
@@ -683,7 +691,7 @@ public class TestSqlParser
             throws Exception
     {
         assertStatement("INSERT INTO a SELECT * FROM t",
-                new Insert(QualifiedName.of("a"), simpleQuery(selectList(new AllColumns()), table(QualifiedName.of("t")))));
+                new Insert(QualifiedName.of("a"), simpleQuery(selectList(new AllColumns()), table(QualifiedName.of("t"))), false, false, null));
     }
 
     @Test

@@ -20,6 +20,7 @@ import com.facebook.presto.metadata.TableHandle;
 import com.facebook.presto.metadata.TableMetadata;
 import com.facebook.presto.spi.ColumnMetadata;
 import com.facebook.presto.spi.ConnectorTableMetadata;
+import com.facebook.presto.spi.CreateTableOption;
 import com.facebook.presto.sql.analyzer.Analysis;
 import com.facebook.presto.sql.analyzer.Field;
 import com.facebook.presto.sql.analyzer.TupleDescriptor;
@@ -102,7 +103,7 @@ public class LogicalPlanner
 
         RelationPlan plan = createRelationPlan(analysis);
 
-        TableMetadata tableMetadata = createTableMetadata(destination, getOutputTableColumns(plan), plan.getSampleWeight().isPresent());
+        TableMetadata tableMetadata = createTableMetadata(destination, getOutputTableColumns(plan, analysis.getCreateTableOption()), plan.getSampleWeight().isPresent());
         checkState(!plan.getSampleWeight().isPresent() || metadata.canCreateSampledTables(session, destination.getCatalogName()), "Cannot write sampled data to a store that doesn't support sampling");
 
         return createTableWriterPlan(
@@ -120,7 +121,7 @@ public class LogicalPlanner
                 analysis,
                 createRelationPlan(analysis),
                 metadata.getTableMetadata(target),
-                new InsertReference(target));
+                new InsertReference(target, analysis.getInsertOption()));
     }
 
     private RelationPlan createTableWriterPlan(Analysis analysis, RelationPlan plan, TableMetadata tableMetadata, WriterTarget target)
@@ -184,12 +185,19 @@ public class LogicalPlanner
         return new TableMetadata(table.getCatalogName(), metadata);
     }
 
-    private static List<ColumnMetadata> getOutputTableColumns(RelationPlan plan)
+    private static List<ColumnMetadata> getOutputTableColumns(RelationPlan plan, CreateTableOption createTableOption)
     {
         ImmutableList.Builder<ColumnMetadata> columns = ImmutableList.builder();
         int ordinalPosition = 0;
+        boolean isPartition = createTableOption.isPartition();
+        List<String> partitionColumns = createTableOption.getPartitions();
         for (Field field : plan.getDescriptor().getVisibleFields()) {
-            columns.add(new ColumnMetadata(field.getName().get(), field.getType(), ordinalPosition, false));
+            // specify the partition columns
+            boolean isColumnPartitioned = false;
+            if (isPartition && partitionColumns.contains(field.getName().get())) {
+                isColumnPartitioned = true;
+            }
+            columns.add(new ColumnMetadata(field.getName().get(), field.getType(), ordinalPosition, isColumnPartitioned));
             ordinalPosition++;
         }
         return columns.build();

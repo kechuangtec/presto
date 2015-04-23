@@ -104,7 +104,7 @@ public interface ConnectorMetadata
     /**
      * Begin insert query
      */
-    ConnectorInsertTableHandle beginInsert(ConnectorSession session, ConnectorTableHandle tableHandle);
+    ConnectorInsertTableHandle beginInsert(ConnectorSession session, ConnectorTableHandle tableHandle, InsertOption insertOption);
 
     /**
      * Commit insert query

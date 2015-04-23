@@ -19,22 +19,28 @@ import com.facebook.presto.metadata.MetadataUtil;
 import com.facebook.presto.metadata.QualifiedTableName;
 import com.facebook.presto.metadata.TableHandle;
 import com.facebook.presto.spi.ColumnMetadata;
+import com.facebook.presto.spi.CreateTableOption;
+import com.facebook.presto.spi.InsertOption;
 import com.facebook.presto.spi.SchemaTableName;
 import com.facebook.presto.spi.type.Type;
 import com.facebook.presto.sql.parser.SqlParser;
 import com.facebook.presto.sql.tree.AllColumns;
+import com.facebook.presto.sql.tree.BooleanLiteral;
 import com.facebook.presto.sql.tree.Cast;
-import com.facebook.presto.sql.tree.CreateTable;
+import com.facebook.presto.sql.tree.CreateTableAsSelect;
 import com.facebook.presto.sql.tree.CreateView;
 import com.facebook.presto.sql.tree.DefaultTraversalVisitor;
+import com.facebook.presto.sql.tree.DoubleLiteral;
 import com.facebook.presto.sql.tree.Explain;
 import com.facebook.presto.sql.tree.ExplainFormat;
 import com.facebook.presto.sql.tree.ExplainOption;
 import com.facebook.presto.sql.tree.ExplainType;
 import com.facebook.presto.sql.tree.Expression;
+import com.facebook.presto.sql.tree.GenericLiteral;
 import com.facebook.presto.sql.tree.Insert;
 import com.facebook.presto.sql.tree.LikePredicate;
 import com.facebook.presto.sql.tree.LongLiteral;
+import com.facebook.presto.sql.tree.PartitionElement;
 import com.facebook.presto.sql.tree.QualifiedName;
 import com.facebook.presto.sql.tree.Query;
 import com.facebook.presto.sql.tree.Relation;
@@ -50,16 +56,23 @@ import com.facebook.presto.sql.tree.SingleColumn;
 import com.facebook.presto.sql.tree.SortItem;
 import com.facebook.presto.sql.tree.Statement;
 import com.facebook.presto.sql.tree.StringLiteral;
+import com.facebook.presto.sql.tree.TimeLiteral;
+import com.facebook.presto.sql.tree.TimestampLiteral;
 import com.facebook.presto.sql.tree.Use;
 import com.facebook.presto.sql.tree.Values;
 import com.facebook.presto.sql.tree.With;
 import com.facebook.presto.sql.tree.WithQuery;
+import com.facebook.presto.util.DateTimeUtils;
 import com.google.common.base.Joiner;
 import com.google.common.collect.FluentIterable;
 import com.google.common.collect.ImmutableList;
 import com.google.common.primitives.Ints;
 
+import java.util.Date;
+import java.util.HashMap;
 import java.util.HashSet;
+import java.util.Iterator;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
@@ -101,6 +114,11 @@ import static com.facebook.presto.sql.analyzer.SemanticErrorCode.MISMATCHED_SET_
 import static com.facebook.presto.sql.analyzer.SemanticErrorCode.MISSING_TABLE;
 import static com.facebook.presto.sql.analyzer.SemanticErrorCode.NOT_SUPPORTED;
 import static com.facebook.presto.sql.analyzer.SemanticErrorCode.TABLE_ALREADY_EXISTS;
+import static com.facebook.presto.sql.analyzer.SemanticErrorCode.UNSUPPORTED_PARTITION_TYPE;
+import static com.facebook.presto.sql.analyzer.SemanticErrorCode.INVALID_PARTITION_VALUE;
+import static com.facebook.presto.sql.analyzer.SemanticErrorCode.MISSING_PARTITION;
+import static com.facebook.presto.sql.analyzer.SemanticErrorCode.MISMATCHED_PARTITION_NAME;
+import static com.facebook.presto.sql.analyzer.SemanticErrorCode.DUPLICATE_PARTITION_NAME;
 import static com.facebook.presto.sql.tree.BooleanLiteral.FALSE_LITERAL;
 import static com.facebook.presto.sql.tree.BooleanLiteral.TRUE_LITERAL;
 import static com.facebook.presto.sql.tree.ExplainFormat.Type.TEXT;
@@ -109,6 +127,7 @@ import static com.google.common.base.Preconditions.checkNotNull;
 import static com.google.common.base.Preconditions.checkState;
 import static com.google.common.collect.Iterables.elementsEqual;
 import static com.google.common.collect.Iterables.transform;
+import static com.google.common.collect.Iterables.contains;
 import static java.util.stream.Collectors.toList;
 
 class StatementAnalyzer
@@ -362,7 +381,6 @@ class StatementAnalyzer
         // analyze the query that creates the data
         TupleDescriptor descriptor = process(insert.getQuery(), context);
 
-        // verify the insert destination columns match the query
         QualifiedTableName targetTable = MetadataUtil.createQualifiedTableName(session, insert.getTarget());
         Optional<TableHandle> targetTableHandle = metadata.getTableHandle(session, targetTable);
         if (!targetTableHandle.isPresent()) {
@@ -371,6 +389,10 @@ class StatementAnalyzer
         analysis.setInsertTarget(targetTableHandle.get());
 
         List<ColumnMetadata> columns = metadata.getTableMetadata(targetTableHandle.get()).getColumns();
+
+        analyzeInsertOption(insert, columns, targetTable);
+
+        // verify the insert destination columns match the query
         Iterable<Type> tableTypes = FluentIterable.from(columns)
                 .filter(column -> !column.isHidden())
                 .transform(ColumnMetadata::getType);
@@ -386,8 +408,150 @@ class StatementAnalyzer
         return new TupleDescriptor(Field.newUnqualified("rows", BIGINT));
     }
 
+    private void analyzeInsertOption(Insert insert, List<ColumnMetadata> columns, QualifiedTableName targetTable)
+    {
+        boolean dynamicPartition = false;
+        List<String> targetPartitionNames = columns.stream()
+                .filter(column -> column.isPartitionKey())
+                .map(ColumnMetadata::getName)
+                .collect(toList());
+        List<Type> targetPartitionTypes = columns.stream()
+                .filter(column -> column.isPartitionKey())
+                .map(ColumnMetadata::getType)
+                .collect(toList());
+
+        if (!targetPartitionNames.isEmpty() && !insert.isPartition()) {
+            throw new SemanticException(MISSING_PARTITION, insert, "Target table '%s' is partitioned but insert query does not specifty the partition", targetTable);
+        }
+
+        if (insert.isPartition() && targetPartitionNames.isEmpty()) {
+            throw new SemanticException(MISSING_PARTITION, insert, "Target table '%s' is not partitioned but insert query speciftys the partition", targetTable);
+        }
+
+        HashMap<String, String> partitionKeyValue = new HashMap<String, String>();
+        HashMap<String, String> partitionTypes = new HashMap<String, String>();
+        LinkedHashMap<String, String> partitionKeyValueInorder = new LinkedHashMap<String, String>();
+
+        if (insert.isPartition()) {
+            dynamicPartition = analyzePartitionElements(insert, targetTable, partitionKeyValue, partitionTypes);
+        }
+        if (partitionKeyValue.size() != targetPartitionNames.size()) {
+            throw new SemanticException(MISMATCHED_PARTITION_NAME, insert, "Insert query has mismatched partition names", targetTable);
+        }
+        else {
+            int index = 0;
+            for (Iterator<String> it = targetPartitionNames.iterator(); it.hasNext(); ) {
+                String partitionName = it.next();
+                if (!partitionKeyValue.containsKey(partitionName)) {
+                    throw new SemanticException(MISMATCHED_PARTITION_NAME, insert, "Insert query has mismatched partition names", targetTable);
+                }
+
+                if (!dynamicPartition) {
+                    String targetPartitionType = targetPartitionTypes.get(index++).getTypeSignature().toString();
+                    String insertPartitionType = partitionTypes.get(partitionName);
+                    if (!insertPartitionType.equalsIgnoreCase(targetPartitionType)) {
+                        throw new SemanticException(INVALID_PARTITION_VALUE,
+                                insert, "Insert query has invalid partition value, "
+                                        + "partition " + partitionName
+                                        + " should be of type "
+                                        + targetPartitionType + " but is of type "
+                                        + insertPartitionType, targetTable);
+                    }
+                }
+                // reorder the partitionKeyValue as the order of select query order
+                partitionKeyValueInorder.put(partitionName, partitionKeyValue.get(partitionName));
+            }
+        }
+        analysis.setInsertOption(new InsertOption(insert.isOverwrite(), insert.isPartition(), dynamicPartition, partitionKeyValueInorder));
+    }
+
+    private boolean analyzePartitionElements(Insert insert, QualifiedTableName targetTable, HashMap<String, String> partitionKeyValue, HashMap<String, String> partitionTypes)
+    {
+        boolean dynamicPartition = false;
+        for (PartitionElement element : insert.getPartitionElements()) {
+            String partitionName = element.getName();
+            String partitionValue = "";
+            String partitionType = "";
+            if (!element.getValue().isPresent()) {
+                dynamicPartition = true;
+                partitionTypes.put(partitionName, partitionType);
+                partitionKeyValue.put(partitionName, partitionValue);
+                continue;
+            }
+            Expression exp = element.getValue().get();
+
+            if (partitionKeyValue.containsKey(partitionName)) {
+                throw new SemanticException(DUPLICATE_PARTITION_NAME, insert, "Insert query has duplicate partition names", targetTable);
+            }
+
+            if (exp instanceof BooleanLiteral) {
+                partitionType = "boolean";
+                partitionValue = String.valueOf(((BooleanLiteral) exp).getValue());
+            }
+            else if (exp instanceof DoubleLiteral) {
+                partitionType = "double";
+                partitionValue = String.valueOf(((DoubleLiteral) exp).getValue());
+            }
+            else if (exp instanceof LongLiteral) {
+                partitionType = "bigint";
+                partitionValue = String.valueOf(((LongLiteral) exp).getValue());
+            }
+            else if (exp instanceof StringLiteral) {
+                partitionType = "varchar";
+                partitionValue = ((StringLiteral) exp).getValue();
+            }
+            else if (exp instanceof TimeLiteral) {
+                partitionType = "time";
+                long value = DateTimeUtils.parseTime(session.getTimeZoneKey(), ((TimeLiteral) exp).getValue());
+                partitionValue = new java.text.SimpleDateFormat("HH:mm:ss.SSS").format(new Date(value));
+            }
+            else if (exp instanceof TimestampLiteral) {
+                partitionType = "timestamp";
+                long value = DateTimeUtils.parseTimestamp(session.getTimeZoneKey(), ((TimestampLiteral) exp).getValue());
+                partitionValue = new java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS").format(new Date(value));
+            }
+            else if (exp instanceof GenericLiteral) {
+                GenericLiteral genericLiteral = (GenericLiteral) exp;
+                partitionType = genericLiteral.getType();
+                partitionValue = genericLiteral.getValue();
+                if (!isPartitionTypeSupported(partitionType)) {
+                    throw new SemanticException(UNSUPPORTED_PARTITION_TYPE, insert, "Unsupported partition type", targetTable);
+                }
+                if (partitionType.equalsIgnoreCase("time")) {
+                    long value = DateTimeUtils.parseTime(session.getTimeZoneKey(), partitionValue);
+                    partitionValue = new java.text.SimpleDateFormat("HH:mm:ss.SSS").format(new Date(value));
+                }
+                else if (partitionType.equalsIgnoreCase("timestamp")) {
+                    long value = DateTimeUtils.parseTimestamp(session.getTimeZoneKey(), partitionValue);
+                    partitionValue = new java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS").format(new Date(value));
+                }
+            }
+            else {
+                throw new SemanticException(UNSUPPORTED_PARTITION_TYPE, insert, "Unsupported partition type", targetTable);
+            }
+
+            partitionTypes.put(partitionName, partitionType);
+            partitionKeyValue.put(partitionName, partitionValue);
+        }
+        return dynamicPartition;
+    }
+
+    private boolean isPartitionTypeSupported(String type)
+    {
+        if (type.equalsIgnoreCase("boolean") ||
+                type.equalsIgnoreCase("double") ||
+                type.equalsIgnoreCase("bigint") ||
+                type.equalsIgnoreCase("varchar") ||
+                type.equalsIgnoreCase("date") ||
+                type.equalsIgnoreCase("time") ||
+                type.equalsIgnoreCase("timestamp")) {
+            return true;
+        }
+        return false;
+    }
+
     @Override
-    protected TupleDescriptor visitCreateTable(CreateTable node, AnalysisContext context)
+    protected TupleDescriptor visitCreateTableAsSelect(CreateTableAsSelect node, AnalysisContext context)
     {
         analysis.setUpdateType("CREATE TABLE");
 
@@ -404,6 +568,18 @@ class StatementAnalyzer
         TupleDescriptor descriptor = process(node.getQuery(), context);
 
         validateColumnNames(node, descriptor);
+
+        // @author : yuananf
+        // handle partition exceptions
+        if (node.isPartition()) {
+            Iterable<Optional<String>> queryColumns = transform(descriptor.getVisibleFields(), Field::getName);
+            for (String partitionColumn : node.getPartitionList()) {
+            if (!contains(queryColumns, Optional.of(partitionColumn))) {
+                    throw new SemanticException(MISSING_PARTITION, node, "Target table '%s' is partitioned but query does not speciftys the partition", targetTable);
+                }
+            }
+        }
+        analysis.setCreateTableOption(new CreateTableOption(node.isPartition(), node.getPartitionList()));
 
         return new TupleDescriptor(Field.newUnqualified("rows", BIGINT));
     }

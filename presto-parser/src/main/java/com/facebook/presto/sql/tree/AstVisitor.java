@@ -422,6 +422,11 @@ public abstract class AstVisitor<R, C>
         return visitStatement(node, context);
     }
 
+    protected R visitCreateTableAsSelect(CreateTableAsSelect node, C context)
+    {
+        return visitStatement(node, context);
+    }
+
     protected R visitDropTable(DropTable node, C context)
     {
         return visitStatement(node, context);
@@ -437,12 +442,22 @@ public abstract class AstVisitor<R, C>
         return visitStatement(node, context);
     }
 
+    protected R visitTableElement(TableElement node, C context)
+    {
+        return visitStatement(node, context);
+    }
+
     protected R visitDropView(DropView node, C context)
     {
         return visitStatement(node, context);
     }
 
     protected R visitInsert(Insert node, C context)
+    {
+        return visitNode(node, context);
+    }
+
+    protected R visitPartitionElement(PartitionElement node, C context)
     {
         return visitNode(node, context);
     }

@@ -55,4 +55,8 @@ public interface HiveMetastore
 
     Table getTable(String databaseName, String tableName)
             throws NoSuchObjectException;
+
+    Partition createPartition(String dbName, String tableName, List<String> values, List<String> pCols, Table table, String location);
+
+    int addPartitions(List<Partition> partitions, String dbName, String tblName);
 }

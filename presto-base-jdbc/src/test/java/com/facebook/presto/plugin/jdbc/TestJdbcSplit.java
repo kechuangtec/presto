@@ -13,11 +13,16 @@
  */
 package com.facebook.presto.plugin.jdbc;
 
+import java.util.List;
+
 import com.facebook.presto.spi.ConnectorColumnHandle;
+import com.facebook.presto.spi.HostAddress;
 import com.facebook.presto.spi.TupleDomain;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
+
 import io.airlift.json.JsonCodec;
+
 import org.testng.annotations.Test;
 
 import static io.airlift.json.JsonCodec.jsonCodec;
@@ -25,7 +30,9 @@ import static org.testng.Assert.assertEquals;
 
 public class TestJdbcSplit
 {
-    private final JdbcSplit split = new JdbcSplit("connectorId", "catalog", "schemaName", "tableName", "connectionUrl", ImmutableMap.<String, String>of(), TupleDomain.<ConnectorColumnHandle>all());
+    List<HostAddress> addresss = ImmutableList.of();
+    private final JdbcSplit split = new JdbcSplit("connectorId", "catalog", "schemaName", "tableName", "connectionUrl", ImmutableMap.<String, String>of(), TupleDomain.<ConnectorColumnHandle>all(), "", addresss, true,
+            "", "", "", "", System.nanoTime(), 1, false);
 
     @Test
     public void testAddresses()
@@ -34,7 +41,8 @@ public class TestJdbcSplit
         assertEquals(split.getAddresses(), ImmutableList.of());
         assertEquals(split.isRemotelyAccessible(), true);
 
-        JdbcSplit jdbcSplit = new JdbcSplit("connectorId", "catalog", "schemaName", "tableName", "connectionUrl", ImmutableMap.<String, String>of(), TupleDomain.<ConnectorColumnHandle>all());
+        JdbcSplit jdbcSplit = new JdbcSplit("connectorId", "catalog", "schemaName", "tableName", "connectionUrl", ImmutableMap.<String, String>of(), TupleDomain.<ConnectorColumnHandle>all(), "", addresss, true,
+                "", "", "", "", System.nanoTime(), 1, false);
         assertEquals(jdbcSplit.getAddresses(), ImmutableList.of());
     }
 

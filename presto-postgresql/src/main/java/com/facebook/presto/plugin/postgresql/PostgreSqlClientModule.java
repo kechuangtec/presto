@@ -15,6 +15,8 @@ package com.facebook.presto.plugin.postgresql;
 
 import com.facebook.presto.plugin.jdbc.BaseJdbcConfig;
 import com.facebook.presto.plugin.jdbc.JdbcClient;
+import com.facebook.presto.plugin.jdbc.cache.JdbcCacheConfig;
+import com.facebook.presto.plugin.jdbc.subtable.JdbcSubTableConfig;
 import com.google.inject.Binder;
 import com.google.inject.Module;
 import com.google.inject.Scopes;
@@ -29,5 +31,7 @@ public class PostgreSqlClientModule
     {
         binder.bind(JdbcClient.class).to(PostgreSqlClient.class).in(Scopes.SINGLETON);
         bindConfig(binder).to(BaseJdbcConfig.class);
+        bindConfig(binder).to(JdbcSubTableConfig.class);
+        bindConfig(binder).to(JdbcCacheConfig.class);
     }
 }

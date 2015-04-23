@@ -176,4 +176,16 @@ public class InMemoryHiveMetastore
     public void flushCache()
     {
     }
+
+    @Override
+    public Partition createPartition(String dbName, String tableName, List<String> values, List<String> pCols, Table table, String location)
+    {
+        throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public int addPartitions(List<Partition> partitions, String dbName, String tblName)
+    {
+        throw new UnsupportedOperationException();
+    }
 }

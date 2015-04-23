@@ -95,7 +95,7 @@ public class BeginTableWrite
             }
             if (target instanceof TableWriterNode.InsertReference) {
                 TableWriterNode.InsertReference insert = (TableWriterNode.InsertReference) target;
-                return new TableWriterNode.InsertHandle(metadata.beginInsert(session, insert.getHandle()));
+                return new TableWriterNode.InsertHandle(metadata.beginInsert(session, insert.getHandle(), insert.getInsertOption()));
             }
             throw new AssertionError("Unhandled target type: " + target.getClass().getName());
         }

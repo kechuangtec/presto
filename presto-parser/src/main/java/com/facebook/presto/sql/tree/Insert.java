@@ -13,7 +13,10 @@
  */
 package com.facebook.presto.sql.tree;
 
+import java.util.List;
 import java.util.Objects;
+
+import com.google.common.collect.ImmutableList;
 
 import static com.google.common.base.MoreObjects.toStringHelper;
 import static com.google.common.base.Preconditions.checkNotNull;
@@ -23,11 +26,17 @@ public final class Insert
 {
     private final QualifiedName target;
     private final Query query;
+    private final boolean overwrite;
+    private final boolean partition;
+    private final List<PartitionElement> partitionElements;
 
-    public Insert(QualifiedName target, Query query)
+    public Insert(QualifiedName target, Query query, boolean overwrite, boolean partition, List<PartitionElement> partitionValueList)
     {
         this.target = checkNotNull(target, "target is null");
         this.query = checkNotNull(query, "query is null");
+        this.overwrite = overwrite;
+        this.partition = partition;
+        this.partitionElements = ImmutableList.copyOf(partitionValueList);
     }
 
     public QualifiedName getTarget()
@@ -40,6 +49,21 @@ public final class Insert
         return query;
     }
 
+    public boolean isOverwrite()
+    {
+        return overwrite;
+    }
+
+    public boolean isPartition()
+    {
+        return partition;
+    }
+
+    public List<PartitionElement> getPartitionElements()
+    {
+        return partitionElements;
+    }
+
     @Override
     public <R, C> R accept(AstVisitor<R, C> visitor, C context)
     {
@@ -49,7 +73,7 @@ public final class Insert
     @Override
     public int hashCode()
     {
-        return Objects.hash(target, query);
+        return Objects.hash(target, query, overwrite, partition, partitionElements);
     }
 
     @Override
@@ -63,7 +87,10 @@ public final class Insert
         }
         Insert o = (Insert) obj;
         return Objects.equals(target, o.target) &&
-                Objects.equals(query, o.query);
+                Objects.equals(query, o.query) &&
+                overwrite == o.overwrite &&
+                partition == o.partition &&
+                Objects.equals(partitionElements, o.partitionElements);
     }
 
     @Override
@@ -72,6 +99,9 @@ public final class Insert
         return toStringHelper(this)
                 .add("target", target)
                 .add("query", query)
+                .add("overwrite", overwrite)
+                .add("partition", partition)
+                .add("partitionElements", partitionElements)
                 .toString();
     }
 }

@@ -13,6 +13,7 @@
  */
 package com.facebook.presto.operator;
 
+import com.facebook.presto.operator.LookupJoinOperators.JoinType;
 import com.facebook.presto.spi.Page;
 import com.facebook.presto.spi.PageBuilder;
 import com.facebook.presto.spi.type.Type;
@@ -33,8 +34,9 @@ public class LookupJoinOperator
 
     private final OperatorContext operatorContext;
     private final JoinProbeFactory joinProbeFactory;
-    private final boolean enableOuterJoin;
+    private final JoinType joinType;
     private final List<Type> types;
+    private final List<Type> probeTypes;
     private final PageBuilder pageBuilder;
 
     private LookupSource lookupSource;
@@ -43,11 +45,14 @@ public class LookupJoinOperator
     private boolean finishing;
     private long joinPosition = -1;
 
+    private int buildSideNextUnvisitedKeyId = -1;
+    private long buildSideOuterJoinPosition = -1;
+
     public LookupJoinOperator(
             OperatorContext operatorContext,
             LookupSourceSupplier lookupSourceSupplier,
             List<Type> probeTypes,
-            boolean enableOuterJoin,
+            JoinType joinType,
             JoinProbeFactory joinProbeFactory)
     {
         this.operatorContext = checkNotNull(operatorContext, "operatorContext is null");
@@ -58,12 +63,13 @@ public class LookupJoinOperator
 
         this.lookupSourceFuture = lookupSourceSupplier.getLookupSource(operatorContext);
         this.joinProbeFactory = joinProbeFactory;
-        this.enableOuterJoin = enableOuterJoin;
+        this.joinType = joinType;
 
         this.types = ImmutableList.<Type>builder()
                 .addAll(probeTypes)
                 .addAll(lookupSourceSupplier.getTypes())
                 .build();
+        this.probeTypes = probeTypes;
         this.pageBuilder = new PageBuilder(types);
     }
 
@@ -88,7 +94,8 @@ public class LookupJoinOperator
     @Override
     public boolean isFinished()
     {
-        boolean finished = finishing && probe == null && pageBuilder.isEmpty();
+        boolean finished = finishing && probe == null && pageBuilder.isEmpty() &&
+                (joinType != JoinType.PROBE_LOOKUP_OUTER || buildSideNextUnvisitedKeyId == LookupSource.NO_MORE_BUILD_SIDE_OUTER_JOIN_POSITIONS);
 
         // if finished drop references so memory is freed early
         if (finished) {
@@ -139,6 +146,11 @@ public class LookupJoinOperator
     @Override
     public Page getOutput()
     {
+        // If needsInput was never called, lookupSource has not been initialized so far.
+        if (lookupSource == null) {
+            lookupSource = tryGetUnchecked(lookupSourceFuture);
+        }
+
         // join probe page with the lookup source
         if (probe != null) {
             while (joinCurrentPosition()) {
@@ -146,6 +158,14 @@ public class LookupJoinOperator
                     break;
                 }
                 if (!outerJoinCurrentPosition()) {
+                    break;
+                }
+            }
+        }
+
+        if (joinType == JoinType.PROBE_LOOKUP_OUTER && finishing && probe == null) {
+            while (buildSideOuterJoinCurrentPosition()) {
+                if (!advanceBuildSideOuterJoinPosition()) {
                     break;
                 }
             }
@@ -205,7 +225,7 @@ public class LookupJoinOperator
 
     private boolean outerJoinCurrentPosition()
     {
-        if (enableOuterJoin && joinPosition < 0) {
+        if (joinType != JoinType.INNER && joinPosition < 0) {
             // write probe columns
             pageBuilder.declarePosition();
             probe.appendTo(pageBuilder);
@@ -216,6 +236,40 @@ public class LookupJoinOperator
                 pageBuilder.getBlockBuilder(outputIndex).appendNull();
                 outputIndex++;
             }
+            if (pageBuilder.isFull()) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private boolean advanceBuildSideOuterJoinPosition()
+    {
+        buildSideNextUnvisitedKeyId = lookupSource.getNextUnvisitedKeyId(buildSideNextUnvisitedKeyId);
+        if (buildSideNextUnvisitedKeyId == LookupSource.NO_MORE_BUILD_SIDE_OUTER_JOIN_POSITIONS) {
+            buildSideOuterJoinPosition = -1;
+            return false;
+        }
+        buildSideOuterJoinPosition = lookupSource.getJoinPositionForKeyId(buildSideNextUnvisitedKeyId);
+        return true;
+    }
+
+    private boolean buildSideOuterJoinCurrentPosition()
+    {
+        // while we have a position to join against...
+        while (buildSideOuterJoinPosition >= 0) {
+            pageBuilder.declarePosition();
+
+            // write nulls into probe columns
+            for (int probeChannel = 0; probeChannel < probeTypes.size(); probeChannel++) {
+                pageBuilder.getBlockBuilder(probeChannel).appendNull();
+            }
+
+            // write build columns
+            lookupSource.appendTo(buildSideOuterJoinPosition, pageBuilder, probeTypes.size());
+
+            // get next join position for this row
+            buildSideOuterJoinPosition = lookupSource.getNextJoinPosition(buildSideOuterJoinPosition);
             if (pageBuilder.isFull()) {
                 return false;
             }

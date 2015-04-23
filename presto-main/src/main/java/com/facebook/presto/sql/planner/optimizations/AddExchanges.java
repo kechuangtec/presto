@@ -319,7 +319,7 @@ public class AddExchanges
             List<Symbol> rightSymbols = Lists.transform(node.getCriteria(), JoinNode.EquiJoinClause::getRight);
 
             PlanNode rightNode;
-            if (distributedJoins) {
+            if (distributedJoins || node.getType() == JoinNode.Type.FULL) {
                 left = enforce(left, Requirements.of(PartitioningProperties.partitioned(leftSymbols, leftHashSymbol)));
                 rightNode = enforce(right, Requirements.of(PartitioningProperties.partitioned(rightSymbols, rightHashSymbol))).getNode();
             }

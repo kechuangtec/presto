@@ -20,6 +20,7 @@ import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.google.common.collect.ImmutableList;
 
+import java.util.ArrayList;
 import java.util.List;
 
 import static com.google.common.base.Preconditions.checkArgument;
@@ -33,6 +34,7 @@ public class HiveOutputTableHandle
     private final String tableName;
     private final List<String> columnNames;
     private final List<Type> columnTypes;
+    private final List<Boolean> columnPartitioned;
     private final String tableOwner;
     private final String targetPath;
     private final String temporaryPath;
@@ -46,6 +48,7 @@ public class HiveOutputTableHandle
             @JsonProperty("tableName") String tableName,
             @JsonProperty("columnNames") List<String> columnNames,
             @JsonProperty("columnTypes") List<Type> columnTypes,
+            @JsonProperty("columnPartitioned") List<Boolean> columnPartitioned,
             @JsonProperty("tableOwner") String tableOwner,
             @JsonProperty("targetPath") String targetPath,
             @JsonProperty("temporaryPath") String temporaryPath,
@@ -66,7 +69,7 @@ public class HiveOutputTableHandle
         checkArgument(columnNames.size() == columnTypes.size(), "columnNames and columnTypes sizes don't match");
         this.columnNames = ImmutableList.copyOf(columnNames);
         this.columnTypes = ImmutableList.copyOf(columnTypes);
-
+        this.columnPartitioned = columnPartitioned;
     }
 
     @JsonProperty
@@ -93,10 +96,69 @@ public class HiveOutputTableHandle
         return columnNames;
     }
 
+    public List<String> getDataColumnNames()
+    {
+        if (!isOutputTablePartitioned()) {
+            return columnNames;
+        }
+
+        List<String> dataColumnNames = new ArrayList<String>();
+        for (int i = 0; i < columnNames.size(); i++) {
+            if (!columnPartitioned.get(i)) {
+                dataColumnNames.add(columnNames.get(i));
+            }
+        }
+
+        return dataColumnNames;
+    }
+
     @JsonProperty
     public List<Type> getColumnTypes()
     {
         return columnTypes;
+    }
+
+    public List<Type> getDataColumnTypes()
+    {
+        if (!isOutputTablePartitioned()) {
+            return ImmutableList.copyOf(columnTypes);
+        }
+
+        List<Type> dataColumnTypes = new ArrayList<Type>();
+        for (int i = 0; i < columnTypes.size(); i++) {
+            if (!columnPartitioned.get(i)) {
+                dataColumnTypes.add(columnTypes.get(i));
+            }
+        }
+
+        return dataColumnTypes;
+    }
+
+    @JsonProperty
+    public List<Boolean> getColumnPartitioned()
+    {
+        return columnPartitioned;
+    }
+
+    public boolean isOutputTablePartitioned()
+    {
+        return columnPartitioned != null && columnPartitioned.contains(true);
+    }
+
+    public List<String> getPartitionColumnNames()
+    {
+        if (!isOutputTablePartitioned()) {
+            return null;
+        }
+
+        List<String> partitionColumnNames = new ArrayList<String>();
+        for (int i = 0; i < columnNames.size(); i++) {
+            if (columnPartitioned.get(i)) {
+                partitionColumnNames.add(columnNames.get(i));
+            }
+        }
+
+        return partitionColumnNames;
     }
 
     @JsonProperty

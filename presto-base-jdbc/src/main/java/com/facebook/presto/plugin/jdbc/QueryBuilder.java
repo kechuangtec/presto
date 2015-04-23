@@ -17,10 +17,10 @@ import com.facebook.presto.spi.ConnectorColumnHandle;
 import com.facebook.presto.spi.Domain;
 import com.facebook.presto.spi.Range;
 import com.facebook.presto.spi.TupleDomain;
-import com.facebook.presto.spi.type.BigintType;
-import com.facebook.presto.spi.type.BooleanType;
-import com.facebook.presto.spi.type.DoubleType;
-import com.facebook.presto.spi.type.Type;
+//import com.facebook.presto.spi.type.BigintType;
+//import com.facebook.presto.spi.type.BooleanType;
+//import com.facebook.presto.spi.type.DoubleType;
+//import com.facebook.presto.spi.type.Type;
 import com.google.common.base.Joiner;
 import com.google.common.collect.ImmutableList;
 
@@ -74,13 +74,13 @@ public class QueryBuilder
     {
         ImmutableList.Builder<String> builder = ImmutableList.builder();
         for (JdbcColumnHandle column : columns) {
-            Type type = column.getColumnType();
-            if (type.equals(BigintType.BIGINT) || type.equals(DoubleType.DOUBLE) || type.equals(BooleanType.BOOLEAN)) {
+            //Type type = column.getColumnType();
+            //if (type.equals(BigintType.BIGINT) || type.equals(DoubleType.DOUBLE) || type.equals(BooleanType.BOOLEAN)) {
                 Domain domain = tupleDomain.getDomains().get(column);
                 if (domain != null) {
                     builder.add(toPredicate(column.getColumnName(), domain));
                 }
-            }
+            //}
         }
         return builder.build();
     }
@@ -171,6 +171,9 @@ public class QueryBuilder
     {
         if (value instanceof Number || value instanceof Boolean) {
             return value.toString();
+        }
+        else if (value instanceof io.airlift.slice.Slice) {
+            return "'" + ((io.airlift.slice.Slice) value).toStringUtf8() + "'";
         }
         throw new UnsupportedOperationException("Can't handle type: " + value.getClass().getName());
     }

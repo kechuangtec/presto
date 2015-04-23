@@ -13,12 +13,15 @@
  */
 package com.facebook.presto.plugin.jdbc;
 
+import com.facebook.presto.plugin.jdbc.cache.JdbcCacheConfig;
+import com.facebook.presto.plugin.jdbc.subtable.JdbcSubTableConfig;
 import com.facebook.presto.spi.ConnectorColumnHandle;
 import com.facebook.presto.spi.ConnectorPartitionResult;
 import com.facebook.presto.spi.ConnectorSplitSource;
 import com.facebook.presto.spi.SchemaTableName;
 import com.facebook.presto.spi.TupleDomain;
 import com.google.common.collect.ImmutableMap;
+
 import org.h2.Driver;
 
 import java.sql.Connection;
@@ -46,7 +49,9 @@ final class TestingDatabase
                 new JdbcConnectorId(CONNECTOR_ID),
                 new BaseJdbcConfig().setConnectionUrl(connectionUrl),
                 "\"",
-                new Driver());
+                new Driver(),
+                new JdbcSubTableConfig(),
+                new JdbcCacheConfig());
 
         connection = DriverManager.getConnection(connectionUrl);
         connection.createStatement().execute("CREATE SCHEMA example");

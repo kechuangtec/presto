@@ -30,12 +30,16 @@ statement
     : query                                                            #statementDefault
     | USE schema=identifier                                            #use
     | USE catalog=identifier '.' schema=identifier                     #use
-    | CREATE TABLE qualifiedName AS query                              #createTableAsSelect
-    | DROP TABLE qualifiedName                                         #dropTable
-    | INSERT INTO qualifiedName query                                  #insertInto
+    | CREATE TABLE qualifiedName 
+        (PARTITION '(' IDENTIFIER (',' IDENTIFIER)* ')' )? AS query    #createTableAsSelect
+    | CREATE TABLE (IF NOT EXISTS)? qualifiedName 
+       '(' columnDef (',' columnDef)* ')' (partitionIterm)?            #createTable
+    | DROP TABLE (IF EXISTS)? qualifiedName                            #dropTable
+    | INSERT (INTO | OVERWRITE) (TABLE)? qualifiedName 
+        (PARTITION '(' partitionDef (',' partitionDef)* ')' )? query   #insert
     | ALTER TABLE from=qualifiedName RENAME TO to=qualifiedName        #renameTable
     | CREATE (OR REPLACE)? VIEW qualifiedName AS query                 #createView
-    | DROP VIEW qualifiedName                                          #dropView
+    | DROP VIEW (IF EXISTS)? qualifiedName                             #dropView
     | EXPLAIN ('(' explainOption (',' explainOption)* ')')? statement  #explain
     | SHOW TABLES ((FROM | IN) qualifiedName)? (LIKE pattern=STRING)?  #showTables
     | SHOW SCHEMAS ((FROM | IN) identifier)?                           #showSchemas
@@ -61,6 +65,11 @@ with
     : WITH RECURSIVE? namedQuery (',' namedQuery)*
     ;
 
+partitionDef
+    : identifier (EQ valueExpression)?   # partitionElement
+    ;
+
+
 queryNoWith:
       queryTerm
       (ORDER BY sortItem (',' sortItem)*)?
@@ -72,6 +81,14 @@ queryTerm
     : queryPrimary                                                             #queryTermDefault
     | left=queryTerm operator=INTERSECT setQuantifier? right=queryTerm         #setOperation
     | left=queryTerm operator=(UNION | EXCEPT) setQuantifier? right=queryTerm  #setOperation
+    ;
+
+columnDef
+    : identifier type (COMMENT STRING)?  #tableElement
+    ;
+
+partitionIterm
+    : PARTITIONED BY '(' columnDef (',' columnDef)* ')'
     ;
 
 queryPrimary
@@ -395,6 +412,7 @@ USING: 'USING';
 ON: 'ON';
 OVER: 'OVER';
 PARTITION: 'PARTITION';
+PARTITIONED: 'PARTITIONED';
 RANGE: 'RANGE';
 ROWS: 'ROWS';
 UNBOUNDED: 'UNBOUNDED';
@@ -407,10 +425,12 @@ RECURSIVE: 'RECURSIVE';
 VALUES: 'VALUES';
 CREATE: 'CREATE';
 TABLE: 'TABLE';
+COMMENT: 'COMMENT';
 VIEW: 'VIEW';
 REPLACE: 'REPLACE';
 INSERT: 'INSERT';
 INTO: 'INTO';
+OVERWRITE: 'OVERWRITE';
 CONSTRAINT: 'CONSTRAINT';
 DESCRIBE: 'DESCRIBE';
 EXPLAIN: 'EXPLAIN';
