@@ -26,6 +26,7 @@ import java.util.List;
 import java.util.concurrent.Executor;
 
 import static com.facebook.presto.SystemSessionProperties.isBigQueryEnabled;
+import static com.facebook.presto.SystemSessionProperties.getTaskMaxMemory;
 import static com.facebook.presto.execution.SqlTaskExecution.createSqlTaskExecution;
 import static com.facebook.presto.spi.StandardErrorCode.NOT_SUPPORTED;
 import static com.google.common.base.Preconditions.checkNotNull;
@@ -93,7 +94,7 @@ public class SqlTaskExecutionFactory
                 taskStateMachine,
                 taskNotificationExecutor,
                 session,
-                isBigQueryEnabled(session, false) ? bigQueryMaxTaskMemoryUsage : maxTaskMemoryUsage,
+                isBigQueryEnabled(session, false) ? bigQueryMaxTaskMemoryUsage : getTaskMaxMemory(session, maxTaskMemoryUsage),
                 checkNotNull(operatorPreAllocatedMemory, "operatorPreAllocatedMemory is null"),
                 verboseStats,
                 cpuTimerEnabled);
