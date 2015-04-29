@@ -1,73 +1,38 @@
 # Presto
 
-Presto is a distributed SQL query engine for big data.
+Presto分布式大数据SQL查询引擎.
 
-See the [User Manual](https://prestodb.io/docs/current/) for deployment instructions and end user documentation.
+中文用户手册[请点击](http://prestodb-china.com/docs/current/).
 
-## Requirements
+## 编译环境
 
 * Mac OS X or Linux
 * Java 8, 64-bit
 * Maven 3.1.1+ (for building)
 * Python 2.4+ (for running with the launcher script)
 
-## Building Presto
+## 编译Presto
 
-Presto is a standard Maven project. Simply run the following command from the project root directory:
+Presto是一个标准的maven project,在工程的根目录执行以下命令进行编译:
 
     mvn clean install
 
-On the first build, Maven will download all the dependencies from the internet and cache them in the local repository (`~/.m2/repository`), which can take a considerable amount of time. Subsequent builds will be faster.
+第一次运行编译时,将会自动下载所有的maven依赖库并缓存到本地:(`~/.m2/repository`), 可能会需要较长时间,随后编译速度会大大加快.
 
-Presto has a comprehensive set of unit tests that can take several minutes to run. You can disable the tests when building:
+Presto拥有全部的单元测试类,执行此操作可能需要一些时间,可以通过以下编译命令来跳过这些测试类:
 
     mvn clean install -DskipTests
 
-## Running Presto in your IDE
+### 运行cli
 
-### Overview
-
-After building Presto for the first time, you can load the project into your IDE and run the server. We recommend using [IntelliJ IDEA](http://www.jetbrains.com/idea/). Because Presto is a standard Maven project, you can import it into your IDE using the root `pom.xml` file. In IntelliJ, choose Open Project from the Quick Start box or choose Open from the File menu and select the root `pom.xml` file.
-
-After opening the project in IntelliJ, double check that the Java SDK is properly configured properly for the project:
-
-* Open the File menu and select Project Structure
-* In the SDKs section, ensure that a 1.8 JDK is selected (create one if none exist)
-* In the Project section, ensure the Project language level is set to 8.0 as Presto makes use of several Java 8 language features
-
-Presto comes with sample configuration that should work out-of-the-box for development. Use the following options to create a run configuration:
-
-* Main Class: `com.facebook.presto.server.PrestoServer`
-* VM Options: `-ea -Xmx2G -Dconfig=etc/config.properties -Dlog.levels-file=etc/log.properties`
-* Working directory: `$MODULE_DIR$`
-* Use classpath of module: `presto-main`
-
-The working directory should be the `presto-main` subdirectory. In IntelliJ, using `$MODULE_DIR$` accomplishes this automatically.
-
-Additionally, the Hive plugin must be configured with location of your Hive metastore Thrift service. Add the following to the list of VM options, replacing `localhost:9083` with the correct host and port (or use the below value if you do not have a Hive metastore):
-
-    -Dhive.metastore.uri=thrift://localhost:9083
-
-### Using SOCKS for Hive or HDFS
-
-If your Hive metastore or HDFS cluster is not directly accessible to your local machine, you can use SSH port forwarding to access it. Setup a dynamic SOCKS proxy with SSH listening on local port 1080:
-
-    ssh -v -N -D 1080 server
-
-Then add the following to the list of VM options:
-
-    -Dhive.metastore.thrift.client.socks-proxy=localhost:1080
-
-### Running the CLI
-
-Start the CLI to connect to the server and run SQL queries:
+启动CLI连接Presto Server并提交SQL查询:
 
     presto-cli/target/presto-cli-*-executable.jar
 
-Run a query to see the nodes in the cluster:
+查看Presto集群的节点信息:
 
     SELECT * FROM system.runtime.nodes;
 
-In the sample configuration, the Hive connector is mounted in the `hive` catalog, so you can run the following queries to show the tables in the Hive database `default`:
+依照样例配置后,可以执行以下命令列出Hive连接器中的default库中的表信息:
 
     SHOW TABLES FROM hive.default;
