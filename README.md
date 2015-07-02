@@ -2,6 +2,8 @@
 
 Presto分布式大数据SQL查询引擎.
 
+[Presto京东版本使用说明](https://github.com/CHINA-JD/presto/wiki)
+
 中文用户手册[请点击](http://prestodb-china.com/docs/current/).
 
 ## 编译环境
